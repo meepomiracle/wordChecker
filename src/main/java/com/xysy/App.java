@@ -10,7 +10,7 @@ import java.io.InputStream;
  */
 public class App {
     public static void main(String[] args) {
-        String filePath="/pizhu.docx";
+        String filePath="/sample/sample.docx";
         App instance= new App();
         try {
             InputStream is = instance.getClass().getResourceAsStream(filePath);
