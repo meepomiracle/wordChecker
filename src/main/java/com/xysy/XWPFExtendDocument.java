@@ -1,6 +1,6 @@
 package com.xysy;
 
-import org.apache.poi.ooxml.POIXMLDocumentPart;
+import org.apache.poi.POIXMLDocumentPart;
 import org.apache.poi.openxml4j.exceptions.InvalidFormatException;
 import org.apache.poi.openxml4j.opc.OPCPackage;
 import org.apache.poi.openxml4j.opc.PackagePart;
@@ -18,7 +18,7 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.math.BigInteger;
 
-import static org.apache.poi.ooxml.POIXMLTypeLoader.DEFAULT_XML_OPTIONS;
+import static org.apache.poi.POIXMLTypeLoader.DEFAULT_XML_OPTIONS;
 
 public class XWPFExtendDocument extends XWPFDocument {
 

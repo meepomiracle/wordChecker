@@ -16,7 +16,10 @@ public class App {
             InputStream is = instance.getClass().getResourceAsStream(filePath);
             XWPFExtendDocument xwpfDocument = new XWPFExtendDocument(is);
             int totalPage=xwpfDocument.getProperties().getExtendedProperties().getUnderlyingProperties().getPages();
-            //正文缩进判断
+            //标题判断
+            WordUtil.judgeTitle(xwpfDocument);
+
+            //段落判断
             WordUtil.judgeParagraph(xwpfDocument);
             //输出doc
             xwpfDocument.write(new FileOutputStream("f:/out/wordCheckerOut"+System.currentTimeMillis()+".docx"));
