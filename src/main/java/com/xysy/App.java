@@ -1,8 +1,8 @@
 package com.xysy;
 
-import org.apache.poi.xwpf.extractor.XWPFWordExtractor;
-import org.apache.poi.xwpf.usermodel.XWPFDocument;
+import com.xysy.util.WordUtil;
 
+import java.io.FileOutputStream;
 import java.io.InputStream;
 
 /**
@@ -14,13 +14,26 @@ public class App {
         App instance= new App();
         try {
             InputStream is = instance.getClass().getResourceAsStream(filePath);
-            XWPFDocument xwpfDocument = new XWPFDocument(is);
-            XWPFWordExtractor xwpfWordExtractor = new XWPFWordExtractor(xwpfDocument);
+            XWPFExtendDocument xwpfDocument = new XWPFExtendDocument(is);
+            int totalPage=xwpfDocument.getProperties().getExtendedProperties().getUnderlyingProperties().getPages();
+            //标题判断
+            WordUtil.judgeTitle(xwpfDocument);
 
+            //段落判断
+            WordUtil.judgeParagraph(xwpfDocument);
+            //输出doc
+            xwpfDocument.write(new FileOutputStream("f:/out/wordCheckerOut"+System.currentTimeMillis()+".docx"));
+            xwpfDocument.close();
             System.out.println("debug");
         }catch (Exception e){
             e.printStackTrace();
         }
 
     }
+
+
+
+
+
+
 }
