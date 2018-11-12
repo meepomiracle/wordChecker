@@ -22,6 +22,7 @@ import java.util.regex.Pattern;
 public class WordUtil {
 
     public static void judgeParagraph(XWPFExtendDocument xwpfDocument) {
+
         List<XWPFParagraph> paragraphs = xwpfDocument.getParagraphs();
         //doc样式
         XWPFStyles xwpfStyles = xwpfDocument.getStyles();
@@ -249,6 +250,7 @@ public class WordUtil {
         }
         String title = titleParagraph.getText();
         String year = extractNumber(title);
+        year = year.substring(0,year.length()>=4?4:year.length());
         int currentYear = Calendar.getInstance().get(Calendar.YEAR);
         if (StringUtils.isBlank(year) || (StringUtils.isNotBlank(year) && !year.equals(String.valueOf(currentYear)))) {
             List<XWPFRun> runs = titleParagraph.getRuns();
