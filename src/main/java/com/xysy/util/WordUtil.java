@@ -64,7 +64,7 @@ public class WordUtil {
                 List<XWPFRun> runs = xwpfParagraph.getRuns();
                 String content = CollectionUtils.isNotEmpty(runs) ? StringUtils.join(runs, "") : null;
                 if (StringUtils.isNotEmpty(content)) {
-                    System.out.println(content);
+//                    System.out.println(content);
                     String comment = null;
                     //检查缩进
                     if (styleId.equals(defaultStyleId)) {//仅对正文检查缩进
@@ -108,35 +108,35 @@ public class WordUtil {
                 }
             }
 
-            judgeParagraphNo(xwpfDocument,level1PNos,level2PNos);
+            judgeParagraphNo(xwpfDocument, level1PNos, level2PNos);
         }
     }
 
-    private static void judgeParagraphNo(XWPFExtendDocument xwpfDocument,List<XWPFExtendParagraph> level1PNos, List<XWPFExtendParagraph> level2PNos) {
+    private static void judgeParagraphNo(XWPFExtendDocument xwpfDocument, List<XWPFExtendParagraph> level1PNos, List<XWPFExtendParagraph> level2PNos) {
         judgeParagraphNo(xwpfDocument, level1PNos);
-        if(CollectionUtils.isNotEmpty(level2PNos)){
-            Map<String,List<XWPFExtendParagraph>> map = level2PNos.stream().collect(Collectors.groupingBy(XWPFExtendParagraph::getParentParagraphNo));
-            Iterator<Map.Entry<String,List<XWPFExtendParagraph>>> iterator = map.entrySet().iterator();
-            while(iterator.hasNext()){
-                Map.Entry<String,List<XWPFExtendParagraph>> entry = iterator.next();
+        if (CollectionUtils.isNotEmpty(level2PNos)) {
+            Map<String, List<XWPFExtendParagraph>> map = level2PNos.stream().collect(Collectors.groupingBy(XWPFExtendParagraph::getParentParagraphNo));
+            Iterator<Map.Entry<String, List<XWPFExtendParagraph>>> iterator = map.entrySet().iterator();
+            while (iterator.hasNext()) {
+                Map.Entry<String, List<XWPFExtendParagraph>> entry = iterator.next();
                 List<XWPFExtendParagraph> groupLevel2PNos = entry.getValue();
                 judgeParagraphNo(xwpfDocument, groupLevel2PNos);
             }
         }
     }
 
-    private static void judgeParagraphNo(XWPFExtendDocument xwpfDocument,List<XWPFExtendParagraph> pNos){
-        if(CollectionUtils.isNotEmpty(pNos)){
-            for (int i = 0; i <pNos.size() ; i++) {
+    private static void judgeParagraphNo(XWPFExtendDocument xwpfDocument, List<XWPFExtendParagraph> pNos) {
+        if (CollectionUtils.isNotEmpty(pNos)) {
+            for (int i = 0; i < pNos.size(); i++) {
                 XWPFExtendParagraph p = pNos.get(i);
                 String pNo = RegxUtil.extractNumber(p.getParagraphNo());
                 //判断段落编号是否连续
-                if(i>0){
-                    String prePNo = RegxUtil.extractNumber(pNos.get(i-1).getParagraphNo());
-                    if(Integer.valueOf(pNo).intValue()-Integer.valueOf(prePNo).intValue()!=1){
-                        CTR ctr=p.getXwpfParagraph().getRuns().get(0).getCTR();
-                        String comment = String.format("当前段落编号与上一个段落编号不连续或重复，当前编号:(%s),上一编号:(%s)",pNo,prePNo);
-                        addComment(xwpfDocument,ctr,comment);
+                if (i > 0) {
+                    String prePNo = RegxUtil.extractNumber(pNos.get(i - 1).getParagraphNo());
+                    if (Integer.valueOf(pNo).intValue() - Integer.valueOf(prePNo).intValue() != 1) {
+                        CTR ctr = p.getXwpfParagraph().getRuns().get(0).getCTR();
+                        String comment = String.format("当前段落编号与上一个段落编号不连续或重复，当前编号:(%s),上一编号:(%s)", pNo, prePNo);
+                        addComment(xwpfDocument, ctr, comment);
                     }
                 }
             }
@@ -144,33 +144,41 @@ public class WordUtil {
     }
 
 
-    public static void collectParagraphNo(XWPFParagraph paragraph,List<XWPFExtendParagraph> level1PNos,List<XWPFExtendParagraph> level2PNos){
-        String defaultLevel="top";
+    public static void collectParagraphNo(XWPFParagraph paragraph, List<XWPFExtendParagraph> level1PNos, List<XWPFExtendParagraph> level2PNos) {
+        String defaultLevel = "top";
         String text = paragraph.getText();
-        if(StringUtils.isBlank(text)){
+        if (StringUtils.isBlank(text)) {
             return;
         }
         //判断段落是否以编号开头,如1.1,1.2等等
-        String level1Regx="^[1-9]+[\\.]*";
-        String level2Regx="^[1-9]+[\\.][1-9]+[\\.]*";
+        String level1Regx = "^\\d(\\.)[^0-9]";
+        String level2Regx = "^\\d(\\.)\\d";
 
-        if(RegxUtil.regxMatch(text,level1Regx)){
-            String paragraphNo = RegxUtil.regxExtract(text, level1Regx);
+//        if(RegxUtil.regxMatch(text,level1Regx)){
+        String paragraphNo = RegxUtil.regxExtract(text, level1Regx);
+        if (StringUtils.isNotBlank(paragraphNo)) {
+            paragraphNo = RegxUtil.extractNumber(paragraphNo);
             level1PNos.add(new XWPFExtendParagraph(paragraphNo, paragraph, defaultLevel));
             return;
         }
 
-        if(RegxUtil.regxMatch(text,level2Regx )){
-            String paragraphNo=RegxUtil.regxExtract(text, level2Regx);
+//        }
+
+//        if(RegxUtil.regxMatch(text,level2Regx )){
+        paragraphNo = RegxUtil.regxExtract(text, level2Regx);
+        if (StringUtils.isNotBlank(paragraphNo)) {
             //二级标题的上一级标题一般来说已经存在,且对应一级标题列表最后一个
-            String parentPNo=defaultLevel;
-            if(CollectionUtils.isNotEmpty(level1PNos)){
-                parentPNo = level1PNos.get(level1PNos.size()-1).getParagraphNo();
+            String parentPNo = defaultLevel;
+            if (CollectionUtils.isNotEmpty(level1PNos)) {
+                parentPNo = level1PNos.get(level1PNos.size() - 1).getParagraphNo();
             }
-            level2PNos.add(new XWPFExtendParagraph(paragraphNo, paragraph,parentPNo));
+            level2PNos.add(new XWPFExtendParagraph(paragraphNo, paragraph, parentPNo));
         }
 
+//        }
+
     }
+
     /**
      * 判断区域文本是否和段落一致
      *
@@ -180,25 +188,25 @@ public class WordUtil {
         //段落字体样式
         String pChineseFontType = getChineseFontType(xwpfStyle);
         String pWesternFontType = getWesternFontType(xwpfStyle);
-        int pFontSize = getFontSize(xwpfStyle);
+        BigInteger pFontSize = getFontSize(xwpfStyle);
 
         String rChineseFontType = getChineseFontType(run);
         String rWesternFontType = getWesternFontType(run);
-        int rFontSize = getFontSize(run);
+        BigInteger rFontSize = getFontSize(run);
 
         StringBuilder sb = new StringBuilder();
         String comment = null;
-        if (!pChineseFontType.equals(rChineseFontType)) {
+        if (rChineseFontType != null && !pChineseFontType.equals(rChineseFontType)) {
             comment = String.format("(与段落字体样式不一致，段落字体样式:%s,实际样式为:%s)", pChineseFontType, rChineseFontType);
             sb.append(comment);
         }
 
-        if (!pWesternFontType.equals(rWesternFontType)) {
+        if (rWesternFontType != null && !pWesternFontType.equals(rWesternFontType)) {
             comment = String.format("(与段落字体样式不一致，段落字体样式:%s,实际样式为:%s)", pWesternFontType, rWesternFontType);
             sb.append(comment);
         }
 
-        if (pFontSize != rFontSize) {
+        if (rFontSize != null && pFontSize != null && !pFontSize.equals(rFontSize)) {
             comment = String.format("(与段落字体大小不一致)");
             sb.append(comment);
         }
@@ -211,14 +219,15 @@ public class WordUtil {
     }
 
     public static String getChineseFontType(XWPFRun run) {
-        String fontType = Constants.DEFAULT_CHINESE_FONT;
+//        String fontType = Constants.DEFAULT_CHINESE_FONT;
+        String fontType = null;
         CTR ctr = run.getCTR();
         if (ctr != null) {
             CTRPr ctrPr = ctr.getRPr();
             if (ctrPr != null) {
                 CTFonts ctFonts = ctrPr.getRFonts();
                 if (ctFonts != null) {
-                    fontType = ctFonts.getEastAsia()!=null?ctFonts.getEastAsia():fontType;
+                    fontType = ctFonts.getEastAsia();
                 }
             }
         }
@@ -226,14 +235,15 @@ public class WordUtil {
     }
 
     public static String getWesternFontType(XWPFRun run) {
-        String fontType = Constants.DEFAULT_WEST_FONT;
+//        String fontType = Constants.DEFAULT_WEST_FONT;
+        String fontType = null;
         CTR ctr = run.getCTR();
         if (ctr != null) {
             CTRPr ctrPr = ctr.getRPr();
             if (ctrPr != null) {
                 CTFonts ctFonts = ctrPr.getRFonts();
                 if (ctFonts != null) {
-                    fontType = ctFonts.getAscii()!=null?ctFonts.getAscii():fontType;
+                    fontType = ctFonts.getAscii();
                 }
             }
         }
@@ -248,7 +258,7 @@ public class WordUtil {
             if (ctrPr != null) {
                 CTFonts ctFonts = ctrPr.getRFonts();
                 if (ctFonts != null) {
-                    fontType = ctFonts.getEastAsia()!=null?ctFonts.getEastAsia():fontType;
+                    fontType = ctFonts.getEastAsia() != null ? ctFonts.getEastAsia() : fontType;
                 }
             }
         }
@@ -263,7 +273,7 @@ public class WordUtil {
             if (ctrPr != null) {
                 CTFonts ctFonts = ctrPr.getRFonts();
                 if (ctFonts != null) {
-                    fontType = ctFonts.getAscii()!=null?ctFonts.getAscii():fontType;
+                    fontType = ctFonts.getAscii() != null ? ctFonts.getAscii() : fontType;
                 }
             }
         }
@@ -271,32 +281,34 @@ public class WordUtil {
     }
 
 
-    public static int getFontSize(XWPFRun run) {
-        BigInteger fontSize = Constants.DEFAULT_FONT_SIZE;
+    public static BigInteger getFontSize(XWPFRun run) {
+//        BigInteger fontSize = Constants.DEFAULT_FONT_SIZE;
+        BigInteger fontSize = null;
         CTR ctr = run.getCTR();
         CTRPr ctrPr = ctr.getRPr();
         if (ctrPr != null) {
             CTHpsMeasure ctHpsMeasure = ctrPr.getSz();
             if (ctHpsMeasure != null) {
-                fontSize = ctHpsMeasure.getVal()!=null?ctHpsMeasure.getVal():fontSize;
+                fontSize = ctHpsMeasure.getVal();
             }
         }
-        return fontSize.intValue();
+        return fontSize;
     }
 
-    public static int getFontSize(XWPFStyle xwpfStyle) {
-        BigInteger fontSize = Constants.DEFAULT_FONT_SIZE;
+    public static BigInteger getFontSize(XWPFStyle xwpfStyle) {
+//        BigInteger fontSize = Constants.DEFAULT_FONT_SIZE;
+        BigInteger fontSize = null;
         CTStyle ctStyle = xwpfStyle.getCTStyle();
         if (ctStyle != null) {
             CTRPr ctrPr = ctStyle.getRPr();
             if (ctrPr != null) {
                 CTHpsMeasure ctHpsMeasure = ctrPr.getSz();
                 if (ctHpsMeasure != null) {
-                    fontSize = ctHpsMeasure.getVal()!=null?ctHpsMeasure.getVal():fontSize;
+                    fontSize = ctHpsMeasure.getVal();
                 }
             }
         }
-        return fontSize.intValue();
+        return fontSize;
     }
 
     public static void judgeTitle(XWPFExtendDocument xwpfDocument) {
@@ -309,6 +321,7 @@ public class WordUtil {
                 String title = p.getText();
                 if (StringUtils.isNotBlank(title)) {
                     titleParagraph = p;
+                    break;
                 }
             }
         }
@@ -332,7 +345,6 @@ public class WordUtil {
 
         }
     }
-
 
 
     public static int getFirstLineIndentByStyle(XWPFStyle xwpfStyle) {

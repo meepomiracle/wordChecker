@@ -6,6 +6,7 @@ import org.apache.poi.xwpf.extractor.XWPFWordExtractor;
 import org.apache.poi.xwpf.usermodel.*;
 import org.apache.xmlbeans.XmlCursor;
 
+import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.InputStream;
 
@@ -14,10 +15,18 @@ import java.io.InputStream;
  */
 public class App {
     public static void main(String[] args) {
+        if(args.length<2){
+            System.err.println("请输入word文件路径和输出word目录，仅支持.docx格式");
+            System.exit(0);
+        }
+
+        String inputPath = args[0];
+        String outPath=args[1];
         String filePath="/sample/sample.docx";
         App instance= new App();
         try {
-            InputStream is = instance.getClass().getResourceAsStream(filePath);
+//            InputStream is = instance.getClass().getResourceAsStream(filePath);
+            InputStream is = new FileInputStream(inputPath);
             XWPFExtendDocument xwpfDocument = new XWPFExtendDocument(is);
             XWPFWordExtractor xwpfWordExtractor = new XWPFWordExtractor(xwpfDocument);
             int totalPages = xwpfWordExtractor.getExtendedProperties().getPages();
@@ -43,9 +52,8 @@ public class App {
             r = p.createRun();
             r.setText("----------------------------------------------------------------");
             //输出doc
-            xwpfDocument.write(new FileOutputStream("f:/out/wordCheckerOut"+System.currentTimeMillis()+".docx"));
+            xwpfDocument.write(new FileOutputStream(outPath+"/out"+System.currentTimeMillis()+".docx"));
             xwpfDocument.close();
-            System.out.println("debug");
         }catch (Exception e){
             e.printStackTrace();
         }
