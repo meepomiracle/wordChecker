@@ -1,7 +1,9 @@
 package com.xysy.util;
 
-import com.xysy.XWPFExtendDocument;
+import com.google.common.collect.Lists;
 import com.xysy.domain.constants.Constants;
+import com.xysy.domain.entity.XWPFExtendDocument;
+import com.xysy.domain.entity.XWPFExtendParagraph;
 import com.xysy.domain.enums.AlignmentEnum;
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
@@ -12,17 +14,18 @@ import org.apache.poi.xwpf.usermodel.XWPFStyles;
 import org.openxmlformats.schemas.wordprocessingml.x2006.main.*;
 
 import java.math.BigInteger;
-import java.util.Calendar;
-import java.util.List;
-import java.util.NoSuchElementException;
-import java.util.Optional;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
+import java.util.*;
+import java.util.stream.Collectors;
+
+import static com.xysy.util.RegxUtil.extractNumber;
+import static com.xysy.util.RegxUtil.isNumber;
 
 public class WordUtil {
 
     public static void judgeParagraph(XWPFExtendDocument xwpfDocument) {
 
+        List<XWPFExtendParagraph> level1PNos = Lists.newArrayList();
+        List<XWPFExtendParagraph> level2PNos = Lists.newArrayList();
         List<XWPFParagraph> paragraphs = xwpfDocument.getParagraphs();
         //doc样式
         XWPFStyles xwpfStyles = xwpfDocument.getStyles();
@@ -41,7 +44,7 @@ public class WordUtil {
             for (int i = 0; i < paragraphs.size(); i++) {
                 StringBuilder sb = new StringBuilder();
                 XWPFParagraph xwpfParagraph = paragraphs.get(i);
-
+                collectParagraphNo(xwpfParagraph, level1PNos, level2PNos);
                 String styleId = xwpfParagraph.getStyleID();
                 if (StringUtils.isBlank(styleId)) {
                     styleId = defaultStyleId;
@@ -96,23 +99,84 @@ public class WordUtil {
                     }
 
                     //段落内容判断
-                    for(XWPFRun run:runs){
-                        judgeRun(run,xwpfStyle, xwpfDocument);
+                    for (XWPFRun run : runs) {
+                        judgeRun(run, xwpfStyle, xwpfDocument);
                     }
 
                 } else {
                     System.err.println("没有内容,paragraph num:" + i);
                 }
             }
+
+            judgeParagraphNo(xwpfDocument,level1PNos,level2PNos);
         }
     }
 
+    private static void judgeParagraphNo(XWPFExtendDocument xwpfDocument,List<XWPFExtendParagraph> level1PNos, List<XWPFExtendParagraph> level2PNos) {
+        judgeParagraphNo(xwpfDocument, level1PNos);
+        if(CollectionUtils.isNotEmpty(level2PNos)){
+            Map<String,List<XWPFExtendParagraph>> map = level2PNos.stream().collect(Collectors.groupingBy(XWPFExtendParagraph::getParentParagraphNo));
+            Iterator<Map.Entry<String,List<XWPFExtendParagraph>>> iterator = map.entrySet().iterator();
+            while(iterator.hasNext()){
+                Map.Entry<String,List<XWPFExtendParagraph>> entry = iterator.next();
+                List<XWPFExtendParagraph> groupLevel2PNos = entry.getValue();
+                judgeParagraphNo(xwpfDocument, groupLevel2PNos);
+            }
+        }
+    }
+
+    private static void judgeParagraphNo(XWPFExtendDocument xwpfDocument,List<XWPFExtendParagraph> pNos){
+        if(CollectionUtils.isNotEmpty(pNos)){
+            for (int i = 0; i <pNos.size() ; i++) {
+                XWPFExtendParagraph p = pNos.get(i);
+                String pNo = RegxUtil.extractNumber(p.getParagraphNo());
+                //判断段落编号是否连续
+                if(i>0){
+                    String prePNo = RegxUtil.extractNumber(pNos.get(i-1).getParagraphNo());
+                    if(Integer.valueOf(pNo).intValue()-Integer.valueOf(prePNo).intValue()!=1){
+                        CTR ctr=p.getXwpfParagraph().getRuns().get(0).getCTR();
+                        String comment = String.format("当前段落编号与上一个段落编号不连续或重复，当前编号:(%s),上一编号:(%s)",pNo,prePNo);
+                        addComment(xwpfDocument,ctr,comment);
+                    }
+                }
+            }
+        }
+    }
+
+
+    public static void collectParagraphNo(XWPFParagraph paragraph,List<XWPFExtendParagraph> level1PNos,List<XWPFExtendParagraph> level2PNos){
+        String defaultLevel="top";
+        String text = paragraph.getText();
+        if(StringUtils.isBlank(text)){
+            return;
+        }
+        //判断段落是否以编号开头,如1.1,1.2等等
+        String level1Regx="^[1-9]+[\\.]*";
+        String level2Regx="^[1-9]+[\\.][1-9]+[\\.]*";
+
+        if(RegxUtil.regxMatch(text,level1Regx)){
+            String paragraphNo = RegxUtil.regxExtract(text, level1Regx);
+            level1PNos.add(new XWPFExtendParagraph(paragraphNo, paragraph, defaultLevel));
+            return;
+        }
+
+        if(RegxUtil.regxMatch(text,level2Regx )){
+            String paragraphNo=RegxUtil.regxExtract(text, level2Regx);
+            //二级标题的上一级标题一般来说已经存在,且对应一级标题列表最后一个
+            String parentPNo=defaultLevel;
+            if(CollectionUtils.isNotEmpty(level1PNos)){
+                parentPNo = level1PNos.get(level1PNos.size()-1).getParagraphNo();
+            }
+            level2PNos.add(new XWPFExtendParagraph(paragraphNo, paragraph,parentPNo));
+        }
+
+    }
     /**
      * 判断区域文本是否和段落一致
      *
      * @param run
      */
-    public static void judgeRun(XWPFRun run, XWPFStyle xwpfStyle,XWPFExtendDocument xwpfDocument) {
+    public static void judgeRun(XWPFRun run, XWPFStyle xwpfStyle, XWPFExtendDocument xwpfDocument) {
         //段落字体样式
         String pChineseFontType = getChineseFontType(xwpfStyle);
         String pWesternFontType = getWesternFontType(xwpfStyle);
@@ -123,25 +187,25 @@ public class WordUtil {
         int rFontSize = getFontSize(run);
 
         StringBuilder sb = new StringBuilder();
-        String comment=null;
-        if(!pChineseFontType.equals(rChineseFontType)){
-            comment=String.format("(与段落字体样式不一致，段落字体样式:%s,实际样式为:%s)",pChineseFontType,rChineseFontType);
+        String comment = null;
+        if (!pChineseFontType.equals(rChineseFontType)) {
+            comment = String.format("(与段落字体样式不一致，段落字体样式:%s,实际样式为:%s)", pChineseFontType, rChineseFontType);
             sb.append(comment);
         }
 
-        if(!pWesternFontType.equals(rWesternFontType)){
-            comment=String.format("(与段落字体样式不一致，段落字体样式:%s,实际样式为:%s)",pWesternFontType,rWesternFontType);
+        if (!pWesternFontType.equals(rWesternFontType)) {
+            comment = String.format("(与段落字体样式不一致，段落字体样式:%s,实际样式为:%s)", pWesternFontType, rWesternFontType);
             sb.append(comment);
         }
 
-        if(pFontSize!=rFontSize){
-            comment=String.format("(与段落字体大小不一致)");
+        if (pFontSize != rFontSize) {
+            comment = String.format("(与段落字体大小不一致)");
             sb.append(comment);
         }
-        comment=sb.toString();
+        comment = sb.toString();
         CTR ctr = run.getCTR();
-        if(StringUtils.isNotBlank(comment)){
-            addComment(xwpfDocument,ctr,comment);
+        if (StringUtils.isNotBlank(comment)) {
+            addComment(xwpfDocument, ctr, comment);
         }
 
     }
@@ -154,7 +218,7 @@ public class WordUtil {
             if (ctrPr != null) {
                 CTFonts ctFonts = ctrPr.getRFonts();
                 if (ctFonts != null) {
-                    fontType = ctFonts.getEastAsia();
+                    fontType = ctFonts.getEastAsia()!=null?ctFonts.getEastAsia():fontType;
                 }
             }
         }
@@ -169,7 +233,7 @@ public class WordUtil {
             if (ctrPr != null) {
                 CTFonts ctFonts = ctrPr.getRFonts();
                 if (ctFonts != null) {
-                    fontType = ctFonts.getAscii();
+                    fontType = ctFonts.getAscii()!=null?ctFonts.getAscii():fontType;
                 }
             }
         }
@@ -184,7 +248,7 @@ public class WordUtil {
             if (ctrPr != null) {
                 CTFonts ctFonts = ctrPr.getRFonts();
                 if (ctFonts != null) {
-                    fontType = ctFonts.getEastAsia();
+                    fontType = ctFonts.getEastAsia()!=null?ctFonts.getEastAsia():fontType;
                 }
             }
         }
@@ -199,7 +263,7 @@ public class WordUtil {
             if (ctrPr != null) {
                 CTFonts ctFonts = ctrPr.getRFonts();
                 if (ctFonts != null) {
-                    fontType = ctFonts.getAscii();
+                    fontType = ctFonts.getAscii()!=null?ctFonts.getAscii():fontType;
                 }
             }
         }
@@ -214,7 +278,7 @@ public class WordUtil {
         if (ctrPr != null) {
             CTHpsMeasure ctHpsMeasure = ctrPr.getSz();
             if (ctHpsMeasure != null) {
-                fontSize = ctHpsMeasure.getVal();
+                fontSize = ctHpsMeasure.getVal()!=null?ctHpsMeasure.getVal():fontSize;
             }
         }
         return fontSize.intValue();
@@ -228,7 +292,7 @@ public class WordUtil {
             if (ctrPr != null) {
                 CTHpsMeasure ctHpsMeasure = ctrPr.getSz();
                 if (ctHpsMeasure != null) {
-                    fontSize = ctHpsMeasure.getVal();
+                    fontSize = ctHpsMeasure.getVal()!=null?ctHpsMeasure.getVal():fontSize;
                 }
             }
         }
@@ -250,7 +314,7 @@ public class WordUtil {
         }
         String title = titleParagraph.getText();
         String year = extractNumber(title);
-        year = year.substring(0,year.length()>=4?4:year.length());
+        year = year.substring(0, year.length() >= 4 ? 4 : year.length());
         int currentYear = Calendar.getInstance().get(Calendar.YEAR);
         if (StringUtils.isBlank(year) || (StringUtils.isNotBlank(year) && !year.equals(String.valueOf(currentYear)))) {
             List<XWPFRun> runs = titleParagraph.getRuns();
@@ -269,30 +333,7 @@ public class WordUtil {
         }
     }
 
-    /**
-     * 判断是否是数字（包含小数）
-     *
-     * @param target
-     * @return
-     */
-    public static boolean isNumber(String target) {
-        String regx = "-?[0-9]+.*[0-9]*";
-        return regxMatch(target, regx);
-    }
 
-    public static boolean regxMatch(String target, String regx) {
-        Pattern pattern = Pattern.compile(regx);
-        Matcher matcher = pattern.matcher(target);
-        return matcher.matches();
-    }
-
-    public static String extractNumber(String text) {
-        String rex = "[^0-9]";
-        Pattern p = Pattern.compile(rex);
-        Matcher m = p.matcher(text);
-        String num = m.replaceAll("").trim();
-        return num;
-    }
 
     public static int getFirstLineIndentByStyle(XWPFStyle xwpfStyle) {
         try {

@@ -1,4 +1,4 @@
-package com.xysy;
+package com.xysy.domain.entity;
 
 import org.apache.poi.POIXMLDocumentPart;
 import org.apache.poi.openxml4j.exceptions.InvalidFormatException;
