@@ -2,15 +2,14 @@ package com.xysy.util;
 
 import com.google.common.collect.Lists;
 import com.xysy.domain.constants.Constants;
+import com.xysy.domain.entity.RepeatTuple;
 import com.xysy.domain.entity.XWPFExtendDocument;
 import com.xysy.domain.entity.XWPFExtendParagraph;
 import com.xysy.domain.enums.AlignmentEnum;
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
-import org.apache.poi.xwpf.usermodel.XWPFParagraph;
-import org.apache.poi.xwpf.usermodel.XWPFRun;
-import org.apache.poi.xwpf.usermodel.XWPFStyle;
-import org.apache.poi.xwpf.usermodel.XWPFStyles;
+import org.apache.poi.xwpf.usermodel.*;
+import org.apache.xmlbeans.XmlCursor;
 import org.openxmlformats.schemas.wordprocessingml.x2006.main.*;
 
 import java.math.BigInteger;
@@ -26,6 +25,7 @@ public class WordUtil {
 
         List<XWPFExtendParagraph> level1PNos = Lists.newArrayList();
         List<XWPFExtendParagraph> level2PNos = Lists.newArrayList();
+        List<XWPFExtendParagraph> choiceParagraphs=Lists.newArrayList();
         List<XWPFParagraph> paragraphs = xwpfDocument.getParagraphs();
         //doc样式
         XWPFStyles xwpfStyles = xwpfDocument.getStyles();
@@ -44,7 +44,7 @@ public class WordUtil {
             for (int i = 0; i < paragraphs.size(); i++) {
                 StringBuilder sb = new StringBuilder();
                 XWPFParagraph xwpfParagraph = paragraphs.get(i);
-                collectParagraphNo(xwpfParagraph, level1PNos, level2PNos);
+                collectParagraphNo(paragraphs,i,xwpfParagraph, level1PNos, level2PNos,choiceParagraphs);
                 String styleId = xwpfParagraph.getStyleID();
                 if (StringUtils.isBlank(styleId)) {
                     styleId = defaultStyleId;
@@ -55,12 +55,12 @@ public class WordUtil {
                     xwpfStyle = xwpfStyles.getStyle(styleId);
                 }
                 //根据样式获取段落首行缩进
-                int firstLineIndent = getFirstLineIndentByStyle(xwpfStyle);
+                int firstLineIndent = getFirstLineIndentByStyle(xwpfStyle,xwpfParagraph);
 //                    int firstLineIndent = xwpfParagraph.getFirstLineIndent();//首行缩进
                 //段落对齐方式
-                AlignmentEnum alignment = getParagraphAlignmentByStyle(xwpfStyle);
+                AlignmentEnum alignment = getParagraphAlignmentByStyle(xwpfStyle,xwpfParagraph);
                 //行距
-                double lineSpacing = getLineSpaceByStyle(xwpfStyle);
+                double lineSpacing = getLineSpaceByStyle(xwpfStyle,xwpfParagraph);
                 List<XWPFRun> runs = xwpfParagraph.getRuns();
                 String content = CollectionUtils.isNotEmpty(runs) ? StringUtils.join(runs, "") : null;
                 if (StringUtils.isNotEmpty(content)) {
@@ -77,7 +77,7 @@ public class WordUtil {
 
                     //检查对齐方式
                     if (styleId.equals(defaultStyleId)) {//仅对正文检查对齐
-                        if (!alignment.equals(requiredAlignment)) {
+                        if (!requiredAlignment.equals(alignment)) {
                             comment = String.format("对齐(要求：%s, 实际:%s)", requiredAlignment.getDesc(), alignment.getDesc());
                             sb.append(comment);
                         }
@@ -104,13 +104,59 @@ public class WordUtil {
                     }
 
                 } else {
-                    System.err.println("没有内容,paragraph num:" + i);
+//                    System.err.println("没有内容,paragraph num:" + i);
                 }
             }
 
             judgeParagraphNo(xwpfDocument, level1PNos, level2PNos);
+            judgeChoiceNo(xwpfDocument, choiceParagraphs);
         }
     }
+
+    private static void judgeChoiceNo(XWPFExtendDocument xwpfDocument,List<XWPFExtendParagraph> choiceNos){
+        if(CollectionUtils.isNotEmpty(choiceNos)){
+            Map<String, List<XWPFExtendParagraph>> map = choiceNos.stream().collect(Collectors.groupingBy(XWPFExtendParagraph::getParentParagraphNo));
+            Iterator<Map.Entry<String, List<XWPFExtendParagraph>>> iterator = map.entrySet().iterator();
+            while (iterator.hasNext()) {
+                Map.Entry<String, List<XWPFExtendParagraph>> entry = iterator.next();
+                List<XWPFExtendParagraph> groupChoiceNos = entry.getValue();
+                judgeChoiceNoOfGroup(xwpfDocument, groupChoiceNos);
+            }
+        }
+    }
+
+    private static void judgeChoiceNoOfGroup(XWPFExtendDocument xwpfDocument,List<XWPFExtendParagraph> choiceNos){
+        List<RepeatTuple> repeatTuples = Lists.newArrayList();
+
+        if (CollectionUtils.isNotEmpty(choiceNos)) {
+            for (int i = 0; i < choiceNos.size(); i++) {
+                XWPFExtendParagraph p = choiceNos.get(i);
+                String pNo = p.getParagraphNo().toLowerCase();
+                CTR ctr = p.getXwpfParagraph().getRuns().get(0).getCTR();
+                //判断选项编号是否连续
+                if (i > 0) {
+                    String prePNo = choiceNos.get(i - 1).getParagraphNo().toLowerCase();
+                    char choiceNo = pNo.charAt(0);
+                    char preChoiceNo=prePNo.charAt(0);
+                    if (choiceNo - preChoiceNo != 1) {
+                        String comment = String.format("当前选项编号与上一个选项编号不连续或重复，当前选项编号:(%s),上一选项编号:(%s)", pNo, prePNo);
+                        addComment(xwpfDocument, ctr, comment);
+                    }
+                }
+                //判断选项列表中是否有重复内容
+                RepeatTuple repeatTuple = judgeChoiceDuplicate(p, choiceNos);
+                if(repeatTuple!=null){
+                    if(!repeatTuples.contains(repeatTuple)){
+                        repeatTuples.add(repeatTuple);
+                        String comment = String.format("当前选项内容与其他选项内容重复，当前选项编号:(%s),重复选项编号:(%s)",repeatTuple.getNo1(),repeatTuple.getNo2());
+                        addComment(xwpfDocument, ctr,comment);
+                    }
+                }
+            }
+        }
+    }
+
+
 
     private static void judgeParagraphNo(XWPFExtendDocument xwpfDocument, List<XWPFExtendParagraph> level1PNos, List<XWPFExtendParagraph> level2PNos) {
         judgeParagraphNo(xwpfDocument, level1PNos);
@@ -126,27 +172,99 @@ public class WordUtil {
     }
 
     private static void judgeParagraphNo(XWPFExtendDocument xwpfDocument, List<XWPFExtendParagraph> pNos) {
+        List<RepeatTuple> repeatTuples = Lists.newArrayList();
+
         if (CollectionUtils.isNotEmpty(pNos)) {
             for (int i = 0; i < pNos.size(); i++) {
                 XWPFExtendParagraph p = pNos.get(i);
-                String pNo = RegxUtil.extractNumber(p.getParagraphNo());
+                String pNo = p.getParagraphNo();
+                String pNoN = RegxUtil.extractNumber(pNo);
+                CTR ctr = p.getXwpfParagraph().getRuns().get(0).getCTR();
                 //判断段落编号是否连续
                 if (i > 0) {
-                    String prePNo = RegxUtil.extractNumber(pNos.get(i - 1).getParagraphNo());
-                    if (Integer.valueOf(pNo).intValue() - Integer.valueOf(prePNo).intValue() != 1) {
-                        CTR ctr = p.getXwpfParagraph().getRuns().get(0).getCTR();
-                        String comment = String.format("当前段落编号与上一个段落编号不连续或重复，当前编号:(%s),上一编号:(%s)", pNo, prePNo);
+                    String prePNo = pNos.get(i - 1).getParagraphNo();
+                    String prePNoN = RegxUtil.extractNumber(prePNo);
+                    if (Integer.valueOf(pNoN).intValue() - Integer.valueOf(prePNoN).intValue() != 1) {
+
+                        String comment = String.format("当前标题编号与上一个标题编号不连续或重复，当前编号:(%s),上一编号:(%s)", pNo, prePNo);
                         addComment(xwpfDocument, ctr, comment);
+                    }
+                }
+                //判断标题列表中是否有重复内容
+                RepeatTuple repeatTuple = judgeDuplicate(p, pNos);
+                if(repeatTuple!=null){
+                    if(!repeatTuples.contains(repeatTuple)){
+                        repeatTuples.add(repeatTuple);
+                        String comment = String.format("当前标题内容与其他标题内容重复，当前标题编号:(%s),重复标题编号:(%s)",repeatTuple.getNo1(),repeatTuple.getNo2());
+                        addComment(xwpfDocument, ctr,comment);
                     }
                 }
             }
         }
     }
 
+    /**
+     * 判断选项内容是否有重复
+     * @param p
+     * @param choiceNos
+     * @return
+     */
+    private static RepeatTuple judgeChoiceDuplicate(XWPFExtendParagraph p, List<XWPFExtendParagraph> choiceNos) {
+        String text = p.getXwpfParagraph().getText();
+        String regx = "[a-fA-F](\\.)";
+        //提取标题外的内容
+        String content = RegxUtil.relace(regx,text);
 
-    public static void collectParagraphNo(XWPFParagraph paragraph, List<XWPFExtendParagraph> level1PNos, List<XWPFExtendParagraph> level2PNos) {
+        for(XWPFExtendParagraph tp:choiceNos){
+            if(StringUtils.equals(p.getParagraphNo(),tp.getParagraphNo())){//排除自己
+                continue;
+            }
+            String tContent=RegxUtil.relace(regx,tp.getXwpfParagraph().getText());
+            if(StringUtils.equals(content,tContent)){
+                return new RepeatTuple(p.getParagraphNo(),tp.getParagraphNo());
+            }
+        }
+
+        return null;
+    }
+    /**
+     * 判断段落内容是否重复
+     * @param p
+     * @param pNos
+     * @return
+     */
+    private static RepeatTuple judgeDuplicate(XWPFExtendParagraph p,List<XWPFExtendParagraph> pNos){
+        String text = p.getXwpfParagraph().getText();
+        String level1Regx = "^\\d(\\.)";
+        String level2Regx = "^\\d(\\.)\\d";
+        int level = p.getLevel();
+        String regx = level1Regx;
+        if(level==1){
+            regx = level1Regx;
+        }
+        if(level==2){
+            regx=level2Regx;
+        }
+        //提取标题外的内容
+        String content = RegxUtil.relace(regx,text);
+
+        for(XWPFExtendParagraph tp:pNos){
+            if(StringUtils.equals(p.getParagraphNo(),tp.getParagraphNo())){//排除自己
+                continue;
+            }
+            String tContent=RegxUtil.relace(regx,tp.getXwpfParagraph().getText());
+            if(StringUtils.equals(content,tContent)){
+                return new RepeatTuple(p.getParagraphNo(),tp.getParagraphNo());
+            }
+        }
+
+        return null;
+    }
+
+
+    public static void collectParagraphNo(List<XWPFParagraph> paragraphs,int pos,XWPFParagraph paragraph, List<XWPFExtendParagraph> level1PNos, List<XWPFExtendParagraph> level2PNos,List<XWPFExtendParagraph> choiceParagraphs) {
         String defaultLevel = "top";
-        String text = paragraph.getText();
+        String text = paragraph.getText()!=null?CommonUtil.trim(paragraph.getText()):null;
         if (StringUtils.isBlank(text)) {
             return;
         }
@@ -154,11 +272,14 @@ public class WordUtil {
         String level1Regx = "^\\d(\\.)[^0-9]";
         String level2Regx = "^\\d(\\.)\\d";
 
+        //判断段落是否以选择题选项开头,如A,B,C,D;
+        String choiceRegx="[a-fA-F](\\.)";
+
 //        if(RegxUtil.regxMatch(text,level1Regx)){
         String paragraphNo = RegxUtil.regxExtract(text, level1Regx);
         if (StringUtils.isNotBlank(paragraphNo)) {
             paragraphNo = RegxUtil.extractNumber(paragraphNo);
-            level1PNos.add(new XWPFExtendParagraph(paragraphNo, paragraph, defaultLevel));
+            level1PNos.add(new XWPFExtendParagraph(paragraphNo, 1,paragraph, defaultLevel));
             return;
         }
 
@@ -172,11 +293,41 @@ public class WordUtil {
             if (CollectionUtils.isNotEmpty(level1PNos)) {
                 parentPNo = level1PNos.get(level1PNos.size() - 1).getParagraphNo();
             }
-            level2PNos.add(new XWPFExtendParagraph(paragraphNo, paragraph, parentPNo));
+            level2PNos.add(new XWPFExtendParagraph(paragraphNo,2, paragraph, parentPNo));
         }
 
 //        }
 
+        String choiceNo=RegxUtil.regxExtract(text, choiceRegx);
+        if(StringUtils.isNotBlank(choiceNo)){
+            choiceNo = RegxUtil.extractCharacter(choiceNo);
+            //理论上来说选择题一定有父标题，不会在顶级
+            String parentPNo = defaultLevel;
+            //寻找该选择题编号的最近一个父标题
+            if(pos>0){
+                int index = pos-1;
+                XWPFParagraph p =paragraphs.get(index);
+                String pText = CommonUtil.trim(p.getText());
+                while(index-->0){
+                    //先寻找二级标题
+                    parentPNo = RegxUtil.regxExtract(pText, level2Regx);
+                    if(StringUtils.isNotBlank(parentPNo)){
+                        choiceParagraphs.add(new XWPFExtendParagraph(choiceNo,3,paragraph, parentPNo));
+                        break;
+                    }else{//找不到再寻找一级标题
+                        parentPNo = RegxUtil.regxExtract(pText,level1Regx);
+                        if(StringUtils.isNotBlank(parentPNo)){
+                            parentPNo = RegxUtil.extractNumber(parentPNo);
+                            choiceParagraphs.add(new XWPFExtendParagraph(choiceNo,2,paragraph, parentPNo));
+                            break;
+                        }
+                    }
+                    p=paragraphs.get(index);
+                    pText = CommonUtil.trim(p.getText());
+                }
+            }
+
+        }
     }
 
     /**
@@ -344,10 +495,49 @@ public class WordUtil {
             }
 
         }
+
+        //页眉判断
+        List<XWPFHeader> headers=xwpfDocument.getHeaderList();
+        if(CollectionUtils.isNotEmpty(headers)){
+            for(XWPFHeader xwpfHeader:headers){
+                String headContent=xwpfHeader.getText();
+                if(StringUtils.isNotBlank(headContent)){
+                    title=CommonUtil.trim(title);
+                    headContent=CommonUtil.trim(headContent);
+                    if(!title.equals(headContent)){
+                        //最前面增加提示
+                        XmlCursor xmlCursor=xwpfDocument.getParagraphs().get(0).getCTP().newCursor();
+                        xmlCursor.toPrevSibling();
+                        XWPFParagraph p=xwpfDocument.insertNewParagraph(xmlCursor);
+                        XWPFRun r = p.createRun();
+                        r.setText(String.format("试卷标题与页眉不一致"));
+                        r.setColor("FF0000");
+                        xmlCursor= xwpfDocument.getParagraphs().get(0).getCTP().newCursor();
+                        xmlCursor.toNextSibling();
+                        p=xwpfDocument.insertNewParagraph(xmlCursor);
+                        r = p.createRun();
+                        r.setText("----------------------------------------------------------------");
+                    }
+                }
+            }
+        }
     }
 
 
-    public static int getFirstLineIndentByStyle(XWPFStyle xwpfStyle) {
+    public static int getFirstLineIndentByStyle(XWPFStyle xwpfStyle, XWPFParagraph xwpfParagraph) {
+        CTP ctp=xwpfParagraph.getCTP();
+        if(ctp!=null){
+            CTPPr ctpPr=ctp.getPPr();
+            if(ctpPr!=null){
+                CTInd ctInd=ctpPr.getInd();
+                if(ctInd!=null){
+                    BigInteger firstLineChars=ctInd.getFirstLineChars();
+                    if(firstLineChars!=null){
+                        return firstLineChars.intValue()/100;
+                    }
+                }
+            }
+        }
         try {
             CTStyle ctStyle = Optional.ofNullable(xwpfStyle.getCTStyle()).get();
             CTPPr ctpPr = Optional.ofNullable(ctStyle.getPPr()).get();
@@ -359,14 +549,33 @@ public class WordUtil {
         }
     }
 
-    public static double getLineSpaceByStyle(XWPFStyle xwpfStyle) {
-        CTStyle ctStyle = Optional.ofNullable(xwpfStyle.getCTStyle()).get();
-        CTPPr ctpPr = Optional.ofNullable(ctStyle.getPPr()).get();
-        CTSpacing ctSpacing = Optional.ofNullable(ctpPr.getSpacing()).get();
-        BigInteger line = Optional.ofNullable(ctSpacing.getLine()).orElse(BigInteger.valueOf(180L));
-        //单倍行距默认18磅
-        double space = line.intValue() / (double) Constants.POUND_UNIT;
-        return space;
+    public static double getLineSpaceByStyle(XWPFStyle xwpfStyle, XWPFParagraph xwpfParagraph) {
+        CTP ctp=xwpfParagraph.getCTP();
+        if(ctp!=null){
+            CTPPr ctpPr=ctp.getPPr();
+            if(ctpPr!=null){
+                CTSpacing ctsPacing=ctpPr.getSpacing();
+                if(ctsPacing!=null){
+                    BigInteger ctsPacingLine=ctsPacing.getLine();
+                    if(ctsPacingLine!=null){
+                        return ctsPacingLine.intValue()/ (double) Constants.POUND_UNIT;
+                    }
+                }
+            }
+        }
+
+        try {
+            CTStyle ctStyle = Optional.ofNullable(xwpfStyle.getCTStyle()).get();
+            CTPPr ctpPr = Optional.ofNullable(ctStyle.getPPr()).get();
+            CTSpacing ctSpacing = Optional.ofNullable(ctpPr.getSpacing()).get();
+            BigInteger line = Optional.ofNullable(ctSpacing.getLine()).orElse(BigInteger.valueOf(360L));
+            //单倍行距默认18磅
+            double space = line.intValue() / (double) Constants.POUND_UNIT;
+            return space;
+        }catch (NoSuchElementException e){
+            return BigInteger.valueOf(360L).intValue()/(double) Constants.POUND_UNIT;
+        }
+
     }
 
     /**
@@ -374,17 +583,37 @@ public class WordUtil {
      * 默认返回两边对齐
      *
      * @param xwpfStyle
+     * @param xwpfParagraph
      * @return
      */
-    public static AlignmentEnum getParagraphAlignmentByStyle(XWPFStyle xwpfStyle) {
+    public static AlignmentEnum getParagraphAlignmentByStyle(XWPFStyle xwpfStyle, XWPFParagraph xwpfParagraph) {
         STJc.Enum jc = null;
+        CTP ctp=xwpfParagraph.getCTP();
+        if(ctp!=null){
+            CTPPr ctpPr=ctp.getPPr();
+            if(ctpPr!=null){
+                CTJc ctJc=ctpPr.getJc();
+                if(ctJc!=null){
+                    jc=ctJc.getVal();
+                    if(jc!=null){
+                        return AlignmentEnum.convert(jc);
+                    }
+                }
+            }
+        }
+
         try {
             CTStyle ctStyle = Optional.ofNullable(xwpfStyle.getCTStyle()).get();
             CTPPr ctpPr = Optional.ofNullable(ctStyle.getPPr()).get();
             CTJc ctJc = Optional.ofNullable(ctpPr.getJc()).get();
             jc = Optional.ofNullable(ctJc.getVal()).orElse(STJc.BOTH);
         } catch (NoSuchElementException e) {
-            jc = STJc.BOTH;
+            ParagraphAlignment paragraphAlignment=xwpfParagraph.getAlignment();
+            if(paragraphAlignment!=null){
+                return AlignmentEnum.convert(paragraphAlignment);
+            }else{
+                jc = STJc.BOTH;
+            }
         }
         AlignmentEnum alignmentEnum = AlignmentEnum.convert(jc);
         return alignmentEnum;

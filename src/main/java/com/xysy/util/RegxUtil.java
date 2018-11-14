@@ -37,4 +37,19 @@ public class RegxUtil {
         String num = m.replaceAll("").trim();
         return num;
     }
+
+    public static String extractCharacter(String text){
+        String rex = "[^a-zA-Z]";
+        Pattern p = Pattern.compile(rex);
+        Matcher m = p.matcher(text);
+        String num = m.replaceAll("").trim();
+        return num;
+    }
+
+    public static String relace(String regx, String text) {
+        Pattern p = Pattern.compile(regx);
+        Matcher m = p.matcher(text);
+        String num = m.replaceAll("").trim();
+        return num;
+    }
 }

@@ -6,6 +6,8 @@ public class XWPFExtendParagraph {
 
     private String paragraphNo;
 
+    private int level;
+
     private XWPFParagraph xwpfParagraph;
 
     private String parentParagraphNo;
@@ -13,6 +15,21 @@ public class XWPFExtendParagraph {
         this.paragraphNo = paragraphNo;
         this.xwpfParagraph = xwpfParagraph;
         this.parentParagraphNo=parentParagraphNo;
+    }
+
+    public XWPFExtendParagraph(String paragraphNo, int level, XWPFParagraph xwpfParagraph, String parentParagraphNo) {
+        this.paragraphNo = paragraphNo;
+        this.level = level;
+        this.xwpfParagraph = xwpfParagraph;
+        this.parentParagraphNo = parentParagraphNo;
+    }
+
+    public int getLevel() {
+        return level;
+    }
+
+    public void setLevel(int level) {
+        this.level = level;
     }
 
     public String getParagraphNo() {

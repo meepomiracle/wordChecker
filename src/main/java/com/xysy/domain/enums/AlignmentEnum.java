@@ -1,5 +1,7 @@
 package com.xysy.domain.enums;
 
+import com.xysy.util.CommonUtil;
+import org.apache.poi.xwpf.usermodel.ParagraphAlignment;
 import org.openxmlformats.schemas.wordprocessingml.x2006.main.STJc;
 
 public enum AlignmentEnum {
@@ -48,6 +50,11 @@ public enum AlignmentEnum {
         return alignmentEnum;
     }
 
+
+    public static AlignmentEnum convert(ParagraphAlignment paragraphAlignment){
+        AlignmentEnum alignmentEnum = AlignmentEnum.valueOf(CommonUtil.UnderlineToHump(paragraphAlignment.toString()));
+        return alignmentEnum;
+    }
     public static void main(String[] args) {
         STJc.Enum anEnum = STJc.BOTH;
         AlignmentEnum alignmentEnum = convert(anEnum);

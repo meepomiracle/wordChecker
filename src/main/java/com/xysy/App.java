@@ -3,7 +3,8 @@ package com.xysy;
 import com.xysy.domain.entity.XWPFExtendDocument;
 import com.xysy.util.WordUtil;
 import org.apache.poi.xwpf.extractor.XWPFWordExtractor;
-import org.apache.poi.xwpf.usermodel.*;
+import org.apache.poi.xwpf.usermodel.XWPFParagraph;
+import org.apache.poi.xwpf.usermodel.XWPFRun;
 import org.apache.xmlbeans.XmlCursor;
 
 import java.io.FileInputStream;
@@ -31,6 +32,7 @@ public class App {
             XWPFWordExtractor xwpfWordExtractor = new XWPFWordExtractor(xwpfDocument);
             int totalPages = xwpfWordExtractor.getExtendedProperties().getPages();
             int wordCount=xwpfWordExtractor.getExtendedProperties().getCharacters();
+
             //标题判断
             WordUtil.judgeTitle(xwpfDocument);
             //段落判断
